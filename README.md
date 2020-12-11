@@ -4,6 +4,7 @@ Linux utility to change the cursor into a strobey laser pointer for screencasts 
 ## Usage
 
 Start the program, and good luck on your prezzi <3
+
 To exit, send SIGINT / Ctrl + C
 
 ## Requirements
