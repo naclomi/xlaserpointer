@@ -6,11 +6,15 @@ find_package(X11 REQUIRED)
 pkg_search_module(CAIRO REQUIRED IMPORTED_TARGET cairo)
 
 set(SOURCES
+    external/argparse.hpp
     src/main.cpp
 )
 
 
+include_directories(external)
+
 add_executable(xlaserpointer ${SOURCES})
+set_property(TARGET xlaserpointer PROPERTY CXX_STANDARD 17)
 target_link_libraries(xlaserpointer
     ${X11_X11_LIB}
     ${X11_Xcomposite_LIB}
@@ -19,5 +23,4 @@ target_link_libraries(xlaserpointer
     ${CAIRO_LIBRARIES}
 )
 
-set_property(TARGET xlaserpointer PROPERTY CXX_STANDARD 11)
 

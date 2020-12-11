@@ -18,7 +18,8 @@
 #include <deque>
 #include <chrono>
 #include <thread>
-#include <math.h>
+#include <cmath>
+#include <csignal>
 
 struct WindowContext {
    Display *d;
@@ -40,6 +41,15 @@ struct Coordinate {
 struct Color {
    double r, g, b, a;
 };
+
+bool shouldExit = false;
+void signalHandler(int signum) {
+   if (shouldExit) {
+      exit(signum);  
+   } else {
+      shouldExit = true;
+   }
+}
 
 void draw(cairo_t *cr, const std::deque<Coordinate> &coords, double size, const Color &color) {
    cairo_save (cr);
@@ -174,6 +184,8 @@ int main() {
    initialize_window(ctx);
    initialize_xinput_capture(ctx);
    CairoContext cairoCtx = initialize_cairo(ctx);
+   
+   signal(SIGINT, signalHandler);
 
    double ptr_size = 7.0;
    Color ptr_color = {1,0,0,.75};
@@ -181,7 +193,7 @@ int main() {
 
    std::deque<Coordinate> pointer_history(trail_length);
    int cooldown = 0;
-   for (;;) {
+   while (!shouldExit) {
       Coordinate current = getPointerCoords(ctx);
       pointer_history.push_back(current);
       pointer_history.pop_front();
