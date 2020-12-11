@@ -15,7 +15,7 @@
 #include <cairo/cairo.h>
 #include <cairo/cairo-xlib.h>
 
-#include <vector>
+#include <deque>
 #include <chrono>
 #include <thread>
 #include <math.h>
@@ -41,7 +41,7 @@ struct Color {
    double r, g, b, a;
 };
 
-void draw(cairo_t *cr, const std::vector<Coordinate> &coords, double size, const Color &color) {
+void draw(cairo_t *cr, const std::deque<Coordinate> &coords, double size, const Color &color) {
    cairo_save (cr);
    cairo_set_source_rgba (cr, 0.0, 0.0, 0.0, 0.0);
    cairo_set_operator (cr, CAIRO_OPERATOR_SOURCE);
@@ -175,19 +175,16 @@ int main() {
    initialize_xinput_capture(ctx);
    CairoContext cairoCtx = initialize_cairo(ctx);
 
-
    double ptr_size = 7.0;
    Color ptr_color = {1,0,0,.75};
    int trail_length = 10;
 
-   std::vector<Coordinate> pointer_history(trail_length);
+   std::deque<Coordinate> pointer_history(trail_length);
    int cooldown = 0;
    for (;;) {
-      for (int i=0; i<pointer_history.size()-1; i++) {
-         pointer_history[i] = pointer_history[i+1];
-      }
       Coordinate current = getPointerCoords(ctx);
-      pointer_history[pointer_history.size()-1] = current;
+      pointer_history.push_back(current);
+      pointer_history.pop_front();
       draw(cairoCtx.cr, pointer_history, ptr_size, ptr_color);
       XFlush(ctx.d);
 
