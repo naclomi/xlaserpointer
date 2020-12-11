@@ -6,10 +6,11 @@ find_package(X11 REQUIRED)
 pkg_search_module(CAIRO REQUIRED IMPORTED_TARGET cairo)
 
 set(SOURCES
-    external/argparse.hpp
+    external/argagg.hpp
+    external/csscolorparser.cpp
+    external/csscolorparser.hpp
     src/main.cpp
 )
-
 
 include_directories(external)
 
@@ -23,4 +24,4 @@ target_link_libraries(xlaserpointer
     ${CAIRO_LIBRARIES}
 )
 
-
+install(TARGETS xlaserpointer DESTINATION bin)

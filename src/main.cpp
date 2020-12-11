@@ -15,11 +15,16 @@
 #include <cairo/cairo.h>
 #include <cairo/cairo-xlib.h>
 
+#include <string>
+#include <iostream>
 #include <deque>
 #include <chrono>
 #include <thread>
 #include <cmath>
 #include <csignal>
+
+#include "argagg.hpp"
+#include "csscolorparser.hpp"
 
 struct WindowContext {
    Display *d;
@@ -179,17 +184,61 @@ Coordinate getPointerCoords(WindowContext &ctx) {
    return current;
 }
 
-int main() {
+int main(int argc, const char **argv) {
+   double ptr_size = 7.0;
+   Color ptr_color = {1,0,0,1};
+   int trail_length = 10;
+
+   argagg::parser argparser {{
+      { "help", {"-h", "--help"},
+      "shows this help message", 0},
+      { "color", {"-c", "--color"},
+      "color of the laser pointer (default: red)", 1},
+      { "size", {"-s", "--size"},
+      "radius of the laser pointer in pixels (default: 7)", 1},
+      { "trail", {"-t", "--trail"},
+      "length of pointer trail (default: 10)", 1},
+   }};
+   argagg::parser_results args;
+   try {
+      args = argparser.parse(argc, argv);
+   } catch (const std::exception& e) {
+      std::cerr << e.what() << '\n';
+      return EXIT_FAILURE;
+   }
+
+   if (args["help"]) {
+      argagg::fmt_ostream fmt(std::cerr);
+      fmt << "Usage: xlaserpointer [options]\n" <<
+             "Change the curser into a strobey laser pointer for "
+             "screencasts and presentations\n" << argparser;
+      return EXIT_SUCCESS;
+   }
+   
+   // TODO: validation
+   if (args["size"]) {
+      ptr_size = args["size"];
+   }
+
+   if (args["trail"]) {
+      trail_length = args["trail"];
+   }
+
+   if (args["color"]) {
+      std::string color_str = args["color"];
+      if (auto color = CSSColorParser::parse(color_str)){      
+         ptr_color.r = (*color).r;
+         ptr_color.g = (*color).g;
+         ptr_color.b = (*color).b;
+         ptr_color.a = (*color).a;
+      }
+   }
+
+   signal(SIGINT, signalHandler);
    WindowContext ctx = initialize_xlib();
    initialize_window(ctx);
    initialize_xinput_capture(ctx);
    CairoContext cairoCtx = initialize_cairo(ctx);
-   
-   signal(SIGINT, signalHandler);
-
-   double ptr_size = 7.0;
-   Color ptr_color = {1,0,0,.75};
-   int trail_length = 10;
 
    std::deque<Coordinate> pointer_history(trail_length);
    int cooldown = 0;
@@ -208,7 +257,6 @@ int main() {
          std::this_thread::sleep_for(std::chrono::milliseconds(10));
          cooldown--;
       }
-      // TODO: exit event
    }
 
    cairo_destroy(cairoCtx.cr);
