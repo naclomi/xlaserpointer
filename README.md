@@ -1,5 +1,5 @@
 # xlaserpointer
-Linux utility to change the curser into a strobey laser pointer for screencasts and presentations, a la the feature in Google Slides and most other slide deck applications.
+Linux utility to change the cursor into a strobey laser pointer for screencasts and presentations, a la the feature in Google Slides and most other slide deck applications.
 
 ## Usage
 
