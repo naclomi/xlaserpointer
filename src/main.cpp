@@ -249,9 +249,9 @@ int main(int argc, const char **argv) {
    if (args["color"]) {
       std::string color_str = args["color"];
       if (auto color = CSSColorParser::parse(color_str)){      
-         ptr_color.r = (*color).r;
-         ptr_color.g = (*color).g;
-         ptr_color.b = (*color).b;
+         ptr_color.r = (*color).r/255.0;
+         ptr_color.g = (*color).g/255.0;
+         ptr_color.b = (*color).b/255.0;
          ptr_color.a = (*color).a;
       }
    }
