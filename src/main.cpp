@@ -194,7 +194,7 @@ int main() {
       if (cooldown == 0){
          XEvent event;
          XNextEvent(ctx.d, &event);
-         cooldown = 5;
+         cooldown = trail_length;
       } else {
          std::this_thread::sleep_for(std::chrono::milliseconds(10));
          cooldown--;
