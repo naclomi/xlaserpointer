@@ -163,8 +163,6 @@ void initialize_window(WindowContext &ctx){
    XFixesSetWindowShapeRegion(ctx.d, ctx.overlay, ShapeInput, 0, 0, region);
    XFixesDestroyRegion(ctx.d, region);
 
-   XFixesHideCursor(ctx.d, ctx.overlay);
-
    XMapWindow(ctx.d, ctx.overlay);
 }
 
@@ -270,6 +268,8 @@ int main(int argc, const char **argv) {
       Coordinate current = getPointerCoords(ctx);
       pointer_history.push_back(current);
       pointer_history.pop_front();
+
+      XFixesHideCursor(ctx.d, ctx.overlay);
       draw(cairoCtx.cr, pointer_history, ptr_size, ptr_color);
       XFlush(ctx.d);
 
