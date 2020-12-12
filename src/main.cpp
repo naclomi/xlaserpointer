@@ -333,12 +333,9 @@ int main(int argc, const char **argv) {
             XMapWindow(ctx.d, ctx.overlay);
          }
 
-         // std::cout<<event.type<<std::endl;
-         // std::cout<<"beep "<<XQLength(ctx.d)<<std::endl;
          cooldown = trail_length;
 
       } else {
-         // std::cout<<"tick "<<std::endl;
          std::this_thread::sleep_for(std::chrono::milliseconds(10));
          cooldown--;
       }
