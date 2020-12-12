@@ -31,6 +31,7 @@
 #include <stdio.h>
 #include <X11/Xlib.h>
 #include <X11/X.h>
+#include <X11/Xatom.h>
 #include <X11/Xutil.h>
 #include <X11/extensions/Xfixes.h>
 #include <X11/extensions/shape.h>
@@ -49,6 +50,10 @@
 
 #include "argagg.hpp"
 #include "csscolorparser.hpp"
+
+#define _NET_WM_STATE_REMOVE        0    // remove/unset property
+#define _NET_WM_STATE_ADD           1    // add/set property
+#define _NET_WM_STATE_TOGGLE        2    // toggle property
 
 struct WindowContext {
    Display *d;
@@ -81,23 +86,23 @@ void signalHandler(int signum) {
 }
 
 void draw(cairo_t *cr, const std::deque<Coordinate> &coords, double size, const Color &color) {
-   cairo_save (cr);
    cairo_set_source_rgba (cr, 0.0, 0.0, 0.0, 0.0);
    cairo_set_operator (cr, CAIRO_OPERATOR_SOURCE);
    cairo_paint (cr);
-   cairo_restore (cr);
 
    cairo_set_source_rgba(cr, color.r, color.g, color.b, color.a);
+   cairo_set_operator (cr, CAIRO_OPERATOR_OVER);
 
    double size_step = size/7.0;
    double cur_size = size - size_step*5;
    for (Coordinate c : coords) {
+      cairo_move_to (cr, c.x, c.y);
       cairo_arc (cr, c.x, c.y, cur_size, 0., 2 * M_PI);
-      cairo_fill(cr);
       if (cur_size < size) {
          cur_size += size_step;
       }
    }
+   cairo_fill(cr);
 }
 
 WindowContext initialize_xlib(){
@@ -220,6 +225,8 @@ int main(int argc, const char **argv) {
       "radius of the laser pointer in pixels (default: 7)", 1},
       { "trail", {"-t", "--trail"},
       "length of pointer trail (default: 10)", 1},
+      { "showcursor", {"--cursor"},
+      "don't hide the default X11 cursor", 0},
    }};
    argagg::parser_results args;
    try {
@@ -262,14 +269,26 @@ int main(int argc, const char **argv) {
    initialize_xinput_capture(ctx);
    CairoContext cairoCtx = initialize_cairo(ctx);
 
-   std::deque<Coordinate> pointer_history(trail_length);
+   if (!args["showcursor"]) {
+      XFixesHideCursor(ctx.d, ctx.overlay);
+   }
+
+   std::deque<Coordinate> pointer_history;
    int cooldown = 0;
    while (!shouldExit) {
       Coordinate current = getPointerCoords(ctx);
       pointer_history.push_back(current);
-      pointer_history.pop_front();
+      if (pointer_history.size() > trail_length) {
+         pointer_history.pop_front();
+      }
 
-      XFixesHideCursor(ctx.d, ctx.overlay);
+      // TODO:
+      // This is a sketchy hack to make sure our overlay appears
+      // on top of menu/popup windows. Find some way to monitor
+      // events and only do so when necessary:
+      XUnmapWindow(ctx.d, ctx.overlay);
+      XMapWindow(ctx.d, ctx.overlay);
+
       draw(cairoCtx.cr, pointer_history, ptr_size, ptr_color);
       XFlush(ctx.d);
 
