@@ -6,6 +6,7 @@
  * Using code adatped from:
  *   - https://stackoverflow.com/questions/21780789/x11-draw-on-overlay-window
  *   - https://stackoverflow.com/questions/62448181/how-do-i-monitor-mouse-movement-events-in-all-windows-not-just-one-on-x11
+ *   - https://stackoverflow.com/questions/8592292/how-to-quit-the-blocking-of-xlibs-xnextevent
  * 
  * Copyright (C) 2020, Naomi Alterman
  * 
@@ -61,6 +62,8 @@ struct WindowContext {
    Window overlay;
    XVisualInfo vinfo;
    int screen_w, screen_h;
+   int xi_opcode, xi_event;
+   int x11_fd;
 };
 
 struct CairoContext {
@@ -70,6 +73,9 @@ struct CairoContext {
 
 struct Coordinate {
    int x, y;
+   bool operator==(const Coordinate& rhs) const {
+       return (x == rhs.x) && (y == rhs.y);
+   }
 };
 
 struct Color {
@@ -111,8 +117,8 @@ WindowContext initialize_xlib(){
       exit(1);
    }
 
-   int xi_opcode, xi_event, error;
-   if (!XQueryExtension(ctx.d, "XInputExtension", &xi_opcode, &xi_event, &error)) {
+   int error;
+   if (!XQueryExtension(ctx.d, "XInputExtension", &ctx.xi_opcode, &ctx.xi_event, &error)) {
      fprintf(stderr, "Error: XInput extension is not supported!\n");
      exit(1);
    }
@@ -126,6 +132,7 @@ WindowContext initialize_xlib(){
    }
    
    ctx.root = DefaultRootWindow(ctx.d);
+   ctx.x11_fd = ConnectionNumber(ctx.d);
 
    return ctx;
 }
@@ -143,18 +150,10 @@ void initialize_window(WindowContext &ctx){
       printf("No visual found supporting 32 bit color, terminating\n");
       exit(EXIT_FAILURE);
    }
-   // these next three lines add 32 bit depth, remove if you dont need and change the flags below
    attrs.colormap = XCreateColormap(ctx.d, ctx.root, ctx.vinfo.visual, AllocNone);
    attrs.background_pixel = 0;
    attrs.border_pixel = 0;
 
-   // Window XCreateWindow(
-   //     Display *display, Window parent,
-   //     int x, int y, unsigned int width, unsigned int height, unsigned int border_width,
-   //     int depth, unsigned int class, 
-   //     Visual *visual,
-   //     unsigned long valuemask, XSetWindowAttributes *attributes
-   // );
    ctx.overlay = XCreateWindow(
       ctx.d, ctx.root,
       0, 0, ctx.screen_w, ctx.screen_h, 0,
@@ -162,6 +161,8 @@ void initialize_window(WindowContext &ctx){
       ctx.vinfo.visual,
       CWOverrideRedirect | CWColormap | CWBackPixel | CWBorderPixel, &attrs
    );
+
+   XSelectInput(ctx.d, ctx.overlay, ExposureMask | VisibilityChangeMask);
 
    XserverRegion region = XFixesCreateRegion(ctx.d, 0, 0);
    XFixesSetWindowShapeRegion(ctx.d, ctx.overlay, ShapeBounding, 0, 0, 0);
@@ -273,30 +274,71 @@ int main(int argc, const char **argv) {
       XFixesHideCursor(ctx.d, ctx.overlay);
    }
 
-   std::deque<Coordinate> pointer_history;
+   std::deque<Coordinate> pointer_history(1);
    int cooldown = 0;
+   fd_set in_fds;
+   struct timeval tv;
+
    while (!shouldExit) {
       Coordinate current = getPointerCoords(ctx);
+      bool changed = current == pointer_history.back();
       pointer_history.push_back(current);
       if (pointer_history.size() > trail_length) {
          pointer_history.pop_front();
       }
 
-      // TODO:
-      // This is a sketchy hack to make sure our overlay appears
-      // on top of menu/popup windows. Find some way to monitor
-      // events and only do so when necessary:
-      XUnmapWindow(ctx.d, ctx.overlay);
-      XMapWindow(ctx.d, ctx.overlay);
-
       draw(cairoCtx.cr, pointer_history, ptr_size, ptr_color);
       XFlush(ctx.d);
 
       if (cooldown == 0){
-         XEvent event;
-         XNextEvent(ctx.d, &event);
+
+
+         // TODO TODO TODO:
+         // ugh mouse events don't show up if we drag or popup menu,
+         // so we have to set a timer for periodic wakeups
+         // find some way to monitor for mouse movements so we don't
+         // have to do this
+         FD_ZERO(&in_fds);
+         FD_SET(ctx.x11_fd, &in_fds);
+         tv.tv_usec = 50000;
+         tv.tv_sec = 0;
+         int num_ready_fds = select(ctx.x11_fd + 1, &in_fds, NULL, NULL, &tv);
+         if (num_ready_fds > 0) {
+            XEvent event;
+            bool sleep = true;
+            while(sleep) {
+               while(XEventsQueued(ctx.d, QueuedAlready) > 1) {
+                  XNextEvent(ctx.d, &event);
+                  if (event.xcookie.type == GenericEvent && event.xcookie.extension == ctx.xi_opcode) {
+                     sleep = false;
+                  }
+               }
+               XNextEvent(ctx.d, &event);
+               if (event.xcookie.type == GenericEvent && event.xcookie.extension == ctx.xi_opcode) {
+                  sleep = false;
+               }
+            }
+         } else if (num_ready_fds == 0) {
+            // timeout
+         } else {
+            // select() error
+         }
+
+         if (changed) {
+         // TODO:
+         // This is a sketchy hack to make sure our overlay appears
+         // on top of menu/popup windows. Find some way to monitor
+         // events and only do so when necessary:
+            XUnmapWindow(ctx.d, ctx.overlay);
+            XMapWindow(ctx.d, ctx.overlay);
+         }
+
+         // std::cout<<event.type<<std::endl;
+         // std::cout<<"beep "<<XQLength(ctx.d)<<std::endl;
          cooldown = trail_length;
+
       } else {
+         // std::cout<<"tick "<<std::endl;
          std::this_thread::sleep_for(std::chrono::milliseconds(10));
          cooldown--;
       }
