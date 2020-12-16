@@ -111,8 +111,9 @@ void draw(cairo_t *cr, const std::deque<Coordinate> &coords, double size, const 
    cairo_set_source_rgba(cr, color.r, color.g, color.b, color.a);
    cairo_set_operator (cr, CAIRO_OPERATOR_OVER);
 
-   double size_step = size/7.0;
-   double cur_size = size - size_step*5;
+   int trail_length = coords.size();
+   double size_step = size/(trail_length+2);
+   double cur_size = size - size_step*trail_length;
    for (Coordinate c : coords) {
       cairo_move_to (cr, c.x, c.y);
       cairo_arc (cr, c.x, c.y, cur_size, 0., 2 * M_PI);
@@ -234,13 +235,30 @@ int main(int argc, const char **argv) {
       return EXIT_SUCCESS;
    }
    
-   // TODO: validation
    if (args["size"]) {
-      ptr_size = args["size"];
+      try {
+         ptr_size = args["size"];
+         if(ptr_size < 1) {
+            throw std::exception();
+         }
+      } catch (const std::exception& e) {
+         argagg::fmt_ostream fmt(std::cerr);
+         fmt << "ERROR: Pointer size must be a number greater than 0" << std::endl;
+         return EXIT_FAILURE;
+      }
    }
 
    if (args["trail"]) {
-      trail_length = args["trail"];
+      try {
+         trail_length = args["trail"];
+         if(trail_length < 1) {
+            throw std::exception();
+         }
+      } catch (const std::exception& e) {
+         argagg::fmt_ostream fmt(std::cerr);
+         fmt << "ERROR: Trail length must be an integer greater than 0" << std::endl;
+         return EXIT_FAILURE;
+      }
    }
 
    if (args["color"]) {
@@ -250,6 +268,10 @@ int main(int argc, const char **argv) {
          ptr_color.g = (*color).g/255.0;
          ptr_color.b = (*color).b/255.0;
          ptr_color.a = (*color).a;
+      } else {
+         argagg::fmt_ostream fmt(std::cerr);
+         fmt << "ERROR: Invalid color" << std::endl;
+         return EXIT_FAILURE;
       }
    }
 
