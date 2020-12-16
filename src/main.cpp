@@ -255,6 +255,7 @@ int main(int argc, const char **argv) {
    }
 
    std::deque<Coordinate> pointer_history(1);
+   int cooldown_timer = 0;
 
    while (!shouldExit) {
       Coordinate current = getPointerCoords(ctx);
@@ -267,33 +268,33 @@ int main(int argc, const char **argv) {
       draw(cairoCtx.cr, pointer_history, ptr_size, ptr_color);
       XFlush(ctx.d);
 
-      // TODO TODO TODO:
-      // ugh mouse events don't show up if we drag or popup menu,
-      // so we have to set a timer for periodic wakeups
-      // find some way to monitor for mouse movements so we don't
-      // have to do this
-      bool potential_overlap = false;
-      XEvent event;
-      while(XEventsQueued(ctx.d, QueuedAlready) > 1) {
+      if (cooldown_timer == 0) {
+
+         bool potential_overlap = false;
+         XEvent event;
+         while(XEventsQueued(ctx.d, QueuedAlready) > 1) {
+            XNextEvent(ctx.d, &event);
+            if (event.type == CreateNotify) {
+               potential_overlap = true;
+            }
+         }
          XNextEvent(ctx.d, &event);
          if (event.type == CreateNotify) {
             potential_overlap = true;
          }
-      }
-      XNextEvent(ctx.d, &event);
-      if (event.type == CreateNotify) {
-         potential_overlap = true;
-      }
 
-      if (potential_overlap) {
-         // This is a sketchy hack to make sure our overlay appears
-         // on top of menu/popup windows.
-         XUnmapWindow(ctx.d, ctx.overlay);
-         XMapWindow(ctx.d, ctx.overlay);
-      }
+         if (potential_overlap) {
+            // This is a sketchy hack to make sure our overlay appears
+            // on top of menu/popup windows.
+            XUnmapWindow(ctx.d, ctx.overlay);
+            XMapWindow(ctx.d, ctx.overlay);
+         }
 
-   
-      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+         cooldown_timer = trail_length;
+      } else {
+         std::this_thread::sleep_for(std::chrono::milliseconds(10));
+         cooldown_timer--;
+      }
    }
 
    cairo_destroy(cairoCtx.cr);
