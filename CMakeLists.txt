@@ -19,6 +19,7 @@ set_property(TARGET xlaserpointer PROPERTY CXX_STANDARD 17)
 target_link_libraries(xlaserpointer
     ${X11_X11_LIB}
     ${X11_Xfixes_LIB}
+    ${X11_Xi_LIB}
     ${CAIRO_LIBRARIES}
 )
 

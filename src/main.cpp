@@ -34,6 +34,7 @@
 #include <X11/X.h>
 #include <X11/Xatom.h>
 #include <X11/Xutil.h>
+#include <X11/extensions/XInput2.h>
 #include <X11/extensions/Xfixes.h>
 #include <X11/extensions/shape.h>
 
@@ -147,7 +148,29 @@ void initialize_window(WindowContext &ctx){
    XFixesSetWindowShapeRegion(ctx.d, ctx.overlay, ShapeInput, 0, 0, region);
    XFixesDestroyRegion(ctx.d, region);
 
+   XIEventMask mask[2];
+   XIEventMask *m;
+
+   m = &mask[0];   
+   m->deviceid = XIAllDevices;
+   m->mask_len = XIMaskLen(XI_LASTEVENT);
+   m->mask = (unsigned char *) calloc(m->mask_len, sizeof(char));
+   XISetMask(m->mask, XI_Motion);
+
+   m = &mask[1];
+   m->deviceid = XIAllMasterDevices;
+   m->mask_len = XIMaskLen(XI_LASTEVENT);
+   m->mask = (unsigned char *) calloc(m->mask_len, sizeof(char));
+   XISetMask(m->mask, XI_RawMotion);
+
+   XISelectEvents(ctx.d, ctx.root, &mask[0], 2);
+
    XMapWindow(ctx.d, ctx.overlay);
+
+   XSync(ctx.d, false);
+
+   free(mask[0].mask);
+   free(mask[1].mask);
 }
 
 CairoContext initialize_cairo(WindowContext &ctx) {
@@ -251,18 +274,20 @@ int main(int argc, const char **argv) {
       // have to do this
       bool potential_overlap = false;
       XEvent event;
-      while(XEventsQueued(ctx.d, QueuedAlready) > 0) {
+      while(XEventsQueued(ctx.d, QueuedAlready) > 1) {
          XNextEvent(ctx.d, &event);
          if (event.type == CreateNotify) {
             potential_overlap = true;
          }
       }
+      XNextEvent(ctx.d, &event);
+      if (event.type == CreateNotify) {
+         potential_overlap = true;
+      }
 
       if (potential_overlap) {
-         // TODO:
          // This is a sketchy hack to make sure our overlay appears
-         // on top of menu/popup windows. Find some way to monitor
-         // events and only do so when necessary:
+         // on top of menu/popup windows.
          XUnmapWindow(ctx.d, ctx.overlay);
          XMapWindow(ctx.d, ctx.overlay);
       }
