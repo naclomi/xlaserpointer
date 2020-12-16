@@ -56,6 +56,45 @@
 #define _NET_WM_STATE_ADD           1    // add/set property
 #define _NET_WM_STATE_TOGGLE        2    // toggle property
 
+#include <map>
+static std::map<int, std::string> eventNames = {
+   {2, "KeyPress"},
+   {3, "KeyRelease"},
+   {4, "ButtonPress"},
+   {5, "ButtonRelease"},
+   {6, "MotionNotify"},
+   {7, "EnterNotify"},
+   {8, "LeaveNotify"},
+   {9, "FocusIn"},
+   {10, "FocusOut"},
+   {11, "KeymapNotify"},
+   {12, "Expose"},
+   {13, "GraphicsExpose"},
+   {14, "NoExpose"},
+   {15, "VisibilityNotify"},
+   {16, "CreateNotify"},
+   {17, "DestroyNotify"},
+   {18, "UnmapNotify"},
+   {19, "MapNotify"},
+   {20, "MapRequest"},
+   {21, "ReparentNotify"},
+   {22, "ConfigureNotify"},
+   {23, "ConfigureRequest"},
+   {24, "GravityNotify"},
+   {25, "ResizeRequest"},
+   {26, "CirculateNotify"},
+   {27, "CirculateRequest"},
+   {28, "PropertyNotify"},
+   {29, "SelectionClear"},
+   {30, "SelectionRequest"},
+   {31, "SelectionNotify"},
+   {32, "ColormapNotify"},
+   {33, "ClientMessage"},
+   {34, "MappingNotify"},
+   {35, "GenericEvent"},
+   {36, "LASTEvent"}
+};
+
 struct WindowContext {
    Display *d;
    Window root;
@@ -162,7 +201,8 @@ void initialize_window(WindowContext &ctx){
       CWOverrideRedirect | CWColormap | CWBackPixel | CWBorderPixel, &attrs
    );
 
-   XSelectInput(ctx.d, ctx.overlay, ExposureMask | VisibilityChangeMask);
+   // TODO: play with this, try to get notified when new windows show up
+   XSelectInput(ctx.d, ctx.root, SubstructureNotifyMask);
 
    XserverRegion region = XFixesCreateRegion(ctx.d, 0, 0);
    XFixesSetWindowShapeRegion(ctx.d, ctx.overlay, ShapeBounding, 0, 0, 0);
@@ -180,8 +220,6 @@ void initialize_xinput_capture(WindowContext &ctx) {
    */
    unsigned char mask_bytes[(XI_LASTEVENT + 7) / 8] = {0};  /* must be zeroed! */
    XISetMask(mask_bytes, XI_RawMotion);
-   XISetMask(mask_bytes, XI_RawButtonPress);
-   XISetMask(mask_bytes, XI_RawKeyPress);
 
    /* Set mask to receive events from all master devices */
    XIEventMask evmasks[1];
@@ -298,37 +336,40 @@ int main(int argc, const char **argv) {
          // so we have to set a timer for periodic wakeups
          // find some way to monitor for mouse movements so we don't
          // have to do this
-         FD_ZERO(&in_fds);
-         FD_SET(ctx.x11_fd, &in_fds);
-         tv.tv_usec = 50000;
-         tv.tv_sec = 0;
-         int num_ready_fds = select(ctx.x11_fd + 1, &in_fds, NULL, NULL, &tv);
-         if (num_ready_fds > 0) {
+         bool potential_overlap = false;
+
+         // FD_ZERO(&in_fds);
+         // FD_SET(ctx.x11_fd, &in_fds);
+         // tv.tv_usec = 100000;
+         // tv.tv_sec = 0;
+         std::cout << "+" << std::endl;
+         // int num_ready_fds = select(ctx.x11_fd + 1, &in_fds, NULL, NULL, &tv);
+         // if (num_ready_fds > 0) {
             XEvent event;
-            bool sleep = true;
-            while(sleep) {
-               while(XEventsQueued(ctx.d, QueuedAlready) > 1) {
-                  XNextEvent(ctx.d, &event);
-                  if (event.xcookie.type == GenericEvent && event.xcookie.extension == ctx.xi_opcode) {
-                     sleep = false;
-                  }
-               }
+            while(XEventsQueued(ctx.d, QueuedAlready) > 0) {
                XNextEvent(ctx.d, &event);
-               if (event.xcookie.type == GenericEvent && event.xcookie.extension == ctx.xi_opcode) {
-                  sleep = false;
+               if (event.type != 35) {
+                  std::cout << eventNames[event.type] << std::endl;
+               }
+               if (event.type == CreateNotify) {
+                  potential_overlap = true;
                }
             }
-         } else if (num_ready_fds == 0) {
-            // timeout
-         } else {
-            // select() error
-         }
 
-         if (changed) {
-         // TODO:
-         // This is a sketchy hack to make sure our overlay appears
-         // on top of menu/popup windows. Find some way to monitor
-         // events and only do so when necessary:
+         // } else if (num_ready_fds == 0) {
+         //    // timeout
+         //    std::cout << "timeout" << std::endl;   
+         // } else {
+         //    // select() error
+         //    std::cout << "error " << errno << std::endl;   
+         // }
+         std::cout << "-" << std::endl;
+
+         if (potential_overlap) {
+            // TODO:
+            // This is a sketchy hack to make sure our overlay appears
+            // on top of menu/popup windows. Find some way to monitor
+            // events and only do so when necessary:
             XUnmapWindow(ctx.d, ctx.overlay);
             XMapWindow(ctx.d, ctx.overlay);
          }
@@ -336,9 +377,9 @@ int main(int argc, const char **argv) {
          cooldown = trail_length;
 
       } else {
-         std::this_thread::sleep_for(std::chrono::milliseconds(10));
          cooldown--;
       }
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
    }
 
    cairo_destroy(cairoCtx.cr);
