@@ -36,7 +36,6 @@
 #include <X11/Xutil.h>
 #include <X11/extensions/Xfixes.h>
 #include <X11/extensions/shape.h>
-#include <X11/extensions/XInput2.h>
 
 #include <cairo/cairo.h>
 #include <cairo/cairo-xlib.h>
@@ -52,57 +51,12 @@
 #include "argagg.hpp"
 #include "csscolorparser.hpp"
 
-#define _NET_WM_STATE_REMOVE        0    // remove/unset property
-#define _NET_WM_STATE_ADD           1    // add/set property
-#define _NET_WM_STATE_TOGGLE        2    // toggle property
-
-#include <map>
-static std::map<int, std::string> eventNames = {
-   {2, "KeyPress"},
-   {3, "KeyRelease"},
-   {4, "ButtonPress"},
-   {5, "ButtonRelease"},
-   {6, "MotionNotify"},
-   {7, "EnterNotify"},
-   {8, "LeaveNotify"},
-   {9, "FocusIn"},
-   {10, "FocusOut"},
-   {11, "KeymapNotify"},
-   {12, "Expose"},
-   {13, "GraphicsExpose"},
-   {14, "NoExpose"},
-   {15, "VisibilityNotify"},
-   {16, "CreateNotify"},
-   {17, "DestroyNotify"},
-   {18, "UnmapNotify"},
-   {19, "MapNotify"},
-   {20, "MapRequest"},
-   {21, "ReparentNotify"},
-   {22, "ConfigureNotify"},
-   {23, "ConfigureRequest"},
-   {24, "GravityNotify"},
-   {25, "ResizeRequest"},
-   {26, "CirculateNotify"},
-   {27, "CirculateRequest"},
-   {28, "PropertyNotify"},
-   {29, "SelectionClear"},
-   {30, "SelectionRequest"},
-   {31, "SelectionNotify"},
-   {32, "ColormapNotify"},
-   {33, "ClientMessage"},
-   {34, "MappingNotify"},
-   {35, "GenericEvent"},
-   {36, "LASTEvent"}
-};
-
 struct WindowContext {
    Display *d;
    Window root;
    Window overlay;
    XVisualInfo vinfo;
    int screen_w, screen_h;
-   int xi_opcode, xi_event;
-   int x11_fd;
 };
 
 struct CairoContext {
@@ -155,23 +109,8 @@ WindowContext initialize_xlib(){
    if ((ctx.d = XOpenDisplay(NULL)) == NULL) {
       exit(1);
    }
-
-   int error;
-   if (!XQueryExtension(ctx.d, "XInputExtension", &ctx.xi_opcode, &ctx.xi_event, &error)) {
-     fprintf(stderr, "Error: XInput extension is not supported!\n");
-     exit(1);
-   }
-
-   int major = 2;
-   int minor = 0;
-   int retval = XIQueryVersion(ctx.d, &major, &minor);
-   if (retval != Success) {
-     fprintf(stderr, "Error: XInput 2.0 is not supported (ancient X11?)\n");
-     exit(1);
-   }
    
    ctx.root = DefaultRootWindow(ctx.d);
-   ctx.x11_fd = ConnectionNumber(ctx.d);
 
    return ctx;
 }
@@ -201,7 +140,6 @@ void initialize_window(WindowContext &ctx){
       CWOverrideRedirect | CWColormap | CWBackPixel | CWBorderPixel, &attrs
    );
 
-   // TODO: play with this, try to get notified when new windows show up
    XSelectInput(ctx.d, ctx.root, SubstructureNotifyMask);
 
    XserverRegion region = XFixesCreateRegion(ctx.d, 0, 0);
@@ -210,24 +148,6 @@ void initialize_window(WindowContext &ctx){
    XFixesDestroyRegion(ctx.d, region);
 
    XMapWindow(ctx.d, ctx.overlay);
-}
-
-void initialize_xinput_capture(WindowContext &ctx) {
-   /*
-   * Set mask to receive XI_RawMotion events. Because it's raw,
-   * XWarpPointer() events are not included, you can use XI_Motion
-   * instead.
-   */
-   unsigned char mask_bytes[(XI_LASTEVENT + 7) / 8] = {0};  /* must be zeroed! */
-   XISetMask(mask_bytes, XI_RawMotion);
-
-   /* Set mask to receive events from all master devices */
-   XIEventMask evmasks[1];
-   /* You can use XIAllDevices for XWarpPointer() */
-   evmasks[0].deviceid = XIAllMasterDevices;
-   evmasks[0].mask_len = sizeof(mask_bytes);
-   evmasks[0].mask = mask_bytes;
-   XISelectEvents(ctx.d, ctx.root, evmasks, 1);
 }
 
 CairoContext initialize_cairo(WindowContext &ctx) {
@@ -305,7 +225,6 @@ int main(int argc, const char **argv) {
    signal(SIGINT, signalHandler);
    WindowContext ctx = initialize_xlib();
    initialize_window(ctx);
-   initialize_xinput_capture(ctx);
    CairoContext cairoCtx = initialize_cairo(ctx);
 
    if (!args["showcursor"]) {
@@ -313,9 +232,6 @@ int main(int argc, const char **argv) {
    }
 
    std::deque<Coordinate> pointer_history(1);
-   int cooldown = 0;
-   fd_set in_fds;
-   struct timeval tv;
 
    while (!shouldExit) {
       Coordinate current = getPointerCoords(ctx);
@@ -328,57 +244,30 @@ int main(int argc, const char **argv) {
       draw(cairoCtx.cr, pointer_history, ptr_size, ptr_color);
       XFlush(ctx.d);
 
-      if (cooldown == 0){
-
-
-         // TODO TODO TODO:
-         // ugh mouse events don't show up if we drag or popup menu,
-         // so we have to set a timer for periodic wakeups
-         // find some way to monitor for mouse movements so we don't
-         // have to do this
-         bool potential_overlap = false;
-
-         // FD_ZERO(&in_fds);
-         // FD_SET(ctx.x11_fd, &in_fds);
-         // tv.tv_usec = 100000;
-         // tv.tv_sec = 0;
-         std::cout << "+" << std::endl;
-         // int num_ready_fds = select(ctx.x11_fd + 1, &in_fds, NULL, NULL, &tv);
-         // if (num_ready_fds > 0) {
-            XEvent event;
-            while(XEventsQueued(ctx.d, QueuedAlready) > 0) {
-               XNextEvent(ctx.d, &event);
-               if (event.type != 35) {
-                  std::cout << eventNames[event.type] << std::endl;
-               }
-               if (event.type == CreateNotify) {
-                  potential_overlap = true;
-               }
-            }
-
-         // } else if (num_ready_fds == 0) {
-         //    // timeout
-         //    std::cout << "timeout" << std::endl;   
-         // } else {
-         //    // select() error
-         //    std::cout << "error " << errno << std::endl;   
-         // }
-         std::cout << "-" << std::endl;
-
-         if (potential_overlap) {
-            // TODO:
-            // This is a sketchy hack to make sure our overlay appears
-            // on top of menu/popup windows. Find some way to monitor
-            // events and only do so when necessary:
-            XUnmapWindow(ctx.d, ctx.overlay);
-            XMapWindow(ctx.d, ctx.overlay);
+      // TODO TODO TODO:
+      // ugh mouse events don't show up if we drag or popup menu,
+      // so we have to set a timer for periodic wakeups
+      // find some way to monitor for mouse movements so we don't
+      // have to do this
+      bool potential_overlap = false;
+      XEvent event;
+      while(XEventsQueued(ctx.d, QueuedAlready) > 0) {
+         XNextEvent(ctx.d, &event);
+         if (event.type == CreateNotify) {
+            potential_overlap = true;
          }
-
-         cooldown = trail_length;
-
-      } else {
-         cooldown--;
       }
+
+      if (potential_overlap) {
+         // TODO:
+         // This is a sketchy hack to make sure our overlay appears
+         // on top of menu/popup windows. Find some way to monitor
+         // events and only do so when necessary:
+         XUnmapWindow(ctx.d, ctx.overlay);
+         XMapWindow(ctx.d, ctx.overlay);
+      }
+
+   
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
    }
 
