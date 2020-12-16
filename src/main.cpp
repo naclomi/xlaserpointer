@@ -76,12 +76,30 @@ struct Color {
    double r, g, b, a;
 };
 
+WindowContext initialize_xlib(){
+   WindowContext ctx;
+   if ((ctx.d = XOpenDisplay(NULL)) == NULL) {
+      exit(1);
+   }
+   
+   ctx.root = DefaultRootWindow(ctx.d);
+
+   return ctx;
+}
+
 bool shouldExit = false;
+
 void signalHandler(int signum) {
    if (shouldExit) {
       exit(signum);  
    } else {
       shouldExit = true;
+
+      // Poke the event loop to wake it up immediately, in case there is no
+      // mouse movement to otherwise do so 
+      WindowContext ctx = initialize_xlib();
+      XCreateSimpleWindow(ctx.d, ctx.root, 0, 0, 1, 1, 0, 0, 0);
+      XFlush(ctx.d);
    }
 }
 
@@ -105,16 +123,6 @@ void draw(cairo_t *cr, const std::deque<Coordinate> &coords, double size, const 
    cairo_fill(cr);
 }
 
-WindowContext initialize_xlib(){
-   WindowContext ctx;
-   if ((ctx.d = XOpenDisplay(NULL)) == NULL) {
-      exit(1);
-   }
-   
-   ctx.root = DefaultRootWindow(ctx.d);
-
-   return ctx;
-}
 
 void initialize_window(WindowContext &ctx){
    int default_screen = XDefaultScreen(ctx.d);
@@ -245,10 +253,11 @@ int main(int argc, const char **argv) {
       }
    }
 
-   signal(SIGINT, signalHandler);
    WindowContext ctx = initialize_xlib();
    initialize_window(ctx);
    CairoContext cairoCtx = initialize_cairo(ctx);
+
+   signal(SIGINT, signalHandler);
 
    if (!args["showcursor"]) {
       XFixesHideCursor(ctx.d, ctx.overlay);
