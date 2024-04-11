@@ -11,11 +11,18 @@ To exit, send SIGINT / Ctrl + C
 
 ## Requirements
 
+To build:
+- libx11-dev
+- libxi-dev
+- libcairo2-dev
+
+To run:
 - X11
-- Cairo
+- A compositing window manager
 
 ## TODO
 
+- Non-compositing X11 systems
 - Wayland support
 - Try to minimize dependencies
 
